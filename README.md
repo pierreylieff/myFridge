@@ -89,6 +89,26 @@ src/
   `import-recipe` (extraction de recette Claude), `delete-account` (suppression RGPD)
 - Les **images ne sont pas stockées** : seules les données extraites sont conservées (confidentialité).
 
+Tout le backend est versionné sous [`supabase/`](supabase/) :
+```
+supabase/
+  config.toml              Config CLI (project_id, verify_jwt par fonction)
+  migrations/              4 migrations SQL (schéma, RLS, durcissement, recettes)
+  functions/
+    analyze-scan/          Vision Claude (frigo/placards/congélateur/ticket)
+    import-recipe/         Extraction de recette Claude
+    delete-account/        Suppression de compte RGPD (service role)
+```
+
+### Reconstruire le backend depuis le repo
+Avec la [CLI Supabase](https://supabase.com/docs/guides/cli) :
+```bash
+supabase link --project-ref <votre-ref>      # relier au projet
+supabase db push                              # appliquer les migrations
+supabase functions deploy                     # déployer les 3 Edge Functions
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # clé pour l'IA
+```
+
 ---
 
 ## 5. Couverture du PRD (MVP)

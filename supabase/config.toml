@@ -1,0 +1,18 @@
+# Supabase CLI configuration — myFridge
+# Lier au projet distant : supabase link --project-ref acrozolmszroqegeluch
+project_id = "myfridge"
+
+[db]
+# Version de Postgres du projet distant.
+major_version = 15
+
+# Edge Functions — toutes exigent un JWT valide (verify_jwt = true par défaut).
+# Elles lisent le secret ANTHROPIC_API_KEY (à définir via `supabase secrets set`).
+[functions.analyze-scan]
+verify_jwt = true
+
+[functions.import-recipe]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
