@@ -14,6 +14,7 @@ import Recipes from './screens/Recipes'
 import RecipeDetail from './screens/RecipeDetail'
 import ImportRecipe from './screens/ImportRecipe'
 import Placeholder from './screens/Placeholder'
+import OAuthConsent from './screens/OAuthConsent'
 
 // Gate for authenticated routes. Redirects to login or onboarding as needed.
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -38,6 +39,9 @@ export default function App() {
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
       <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
       <Route path="/onboarding" element={<Onboarding />} />
+
+      {/* Écran de consentement OAuth 2.1 (flux d'un connecteur externe, ex. Claude). */}
+      <Route path="/oauth/consent" element={<OAuthConsent />} />
 
       <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
       <Route path="/item/:id" element={<RequireAuth><AddEditItem /></RequireAuth>} />

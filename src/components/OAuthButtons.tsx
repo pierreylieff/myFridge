@@ -11,7 +11,9 @@ const PROVIDERS: { id: Provider; label: string; icon: string }[] = [
 
 // Social sign-in. Each works once the matching provider is enabled in
 // Supabase Auth. Until then the user sees a clear, non-blocking message.
-export function OAuthButtons() {
+// `redirectTo` lets callers (e.g. the OAuth consent page) come back to the
+// exact URL after the provider round-trip; defaults to the app origin.
+export function OAuthButtons({ redirectTo }: { redirectTo?: string } = {}) {
   const [note, setNote] = useState<string | null>(null)
 
   async function signInWith(id: Provider, label: string) {
@@ -19,7 +21,7 @@ export function OAuthButtons() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: id,
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: redirectTo ?? window.location.origin,
         // Microsoft (azure) needs an explicit scope to return the email.
         scopes: id === 'azure' ? 'email openid profile' : undefined,
       },

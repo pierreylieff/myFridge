@@ -58,62 +58,51 @@ export interface Recipe {
 }
 
 // ---------------------------------------------------------------------------
-// Client + résolution de l'utilisateur courant
+// Client + authentification par identifiants utilisateur
 // ---------------------------------------------------------------------------
 
 const SUPABASE_URL = process.env.SUPABASE_URL
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const ANON_KEY = process.env.SUPABASE_ANON_KEY
+const EMAIL = process.env.MYFRIDGE_EMAIL
+const PASSWORD = process.env.MYFRIDGE_PASSWORD
 
-if (!SUPABASE_URL || !SERVICE_KEY) {
+if (!SUPABASE_URL || !ANON_KEY) {
   throw new Error(
-    'Configuration manquante : SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY doivent être définis (voir .env.example).',
+    'Configuration manquante : SUPABASE_URL et SUPABASE_ANON_KEY doivent être définis (voir .env.example).',
+  )
+}
+if (!EMAIL || !PASSWORD) {
+  throw new Error(
+    'Configuration manquante : MYFRIDGE_EMAIL et MYFRIDGE_PASSWORD doivent être définis (voir .env.example).',
   )
 }
 
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, ANON_KEY, {
+  auth: { autoRefreshToken: true, persistSession: false },
 })
 
-let cachedUserId: string | null | undefined
+let authPromise: Promise<string> | null = null
 
 /**
- * Détermine l'utilisateur à qui appartiennent les données.
- * - MYFRIDGE_USER_ID a la priorité.
- * - sinon MYFRIDGE_USER_EMAIL est résolu via la table `profiles`.
- * - sinon `null` => pas de filtre (toutes les données, tous utilisateurs confondus).
+ * Authentifie le client avec les identifiants utilisateur (une seule fois,
+ * mémoïsé). Une fois connecté, toutes les requêtes passent par les RLS et ne
+ * voient que les données de cet utilisateur. Retourne son user_id (auth.users).
  */
-export async function resolveUserId(): Promise<string | null> {
-  if (cachedUserId !== undefined) return cachedUserId
-
-  const byId = process.env.MYFRIDGE_USER_ID?.trim()
-  if (byId) {
-    cachedUserId = byId
-    return cachedUserId
+export async function ensureAuth(): Promise<string> {
+  if (!authPromise) {
+    authPromise = (async () => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: EMAIL!,
+        password: PASSWORD!,
+      })
+      if (error) {
+        authPromise = null // permet de réessayer au prochain appel
+        throw new Error(`Échec de connexion à Supabase : ${error.message}`)
+      }
+      return data.user.id
+    })()
   }
-
-  const email = process.env.MYFRIDGE_USER_EMAIL?.trim()
-  if (email) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .ilike('email', email)
-      .maybeSingle()
-    if (error) throw error
-    if (!data) {
-      throw new Error(`Aucun profil trouvé pour l'email "${email}".`)
-    }
-    cachedUserId = data.id
-    return cachedUserId
-  }
-
-  cachedUserId = null
-  return null
-}
-
-/** Applique le filtre user_id si un utilisateur est configuré. */
-function scoped<T>(query: T, userId: string | null): T {
-  // @ts-expect-error - les query builders supabase exposent .eq de façon chaînée
-  return userId ? query.eq('user_id', userId) : query
+  return authPromise
 }
 
 // ---------------------------------------------------------------------------
@@ -124,14 +113,13 @@ export async function getRecipes(opts: {
   search?: string
   favoritesOnly?: boolean
 }): Promise<Recipe[]> {
-  const userId = await resolveUserId()
+  await ensureAuth()
   let query = supabase
     .from('recipes')
     .select('*, recipe_ingredients(*)')
     .order('favorite', { ascending: false })
     .order('created_at', { ascending: false })
 
-  query = scoped(query, userId)
   if (opts.favoritesOnly) query = query.eq('favorite', true)
 
   const { data, error } = await query
@@ -151,10 +139,12 @@ export async function getRecipes(opts: {
 }
 
 export async function getRecipe(id: string): Promise<Recipe | null> {
-  const userId = await resolveUserId()
-  let query = supabase.from('recipes').select('*, recipe_ingredients(*)').eq('id', id)
-  query = scoped(query, userId)
-  const { data, error } = await query.maybeSingle()
+  await ensureAuth()
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*, recipe_ingredients(*)')
+    .eq('id', id)
+    .maybeSingle()
   if (error) throw error
   return (data as Recipe) ?? null
 }
@@ -167,14 +157,13 @@ export async function getFridge(opts: {
   rayon?: Rayon
   expiringWithinDays?: number
 }): Promise<PantryItem[]> {
-  const userId = await resolveUserId()
+  await ensureAuth()
   let query = supabase
     .from('pantry_items')
     .select('*')
     .order('rayon', { ascending: true })
     .order('name', { ascending: true })
 
-  query = scoped(query, userId)
   if (opts.rayon) query = query.eq('rayon', opts.rayon)
 
   const { data, error } = await query
@@ -195,15 +184,14 @@ export async function getFridge(opts: {
 // Liste de courses
 // ---------------------------------------------------------------------------
 
-async function getActiveListId(userId: string | null): Promise<string | null> {
-  let query = supabase
+async function getActiveListId(): Promise<string | null> {
+  const { data, error } = await supabase
     .from('shopping_lists')
     .select('id')
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1)
-  query = scoped(query, userId)
-  const { data, error } = await query.maybeSingle()
+    .maybeSingle()
   if (error) throw error
   return data?.id ?? null
 }
@@ -211,8 +199,8 @@ async function getActiveListId(userId: string | null): Promise<string | null> {
 export async function getShoppingList(opts: {
   includeChecked?: boolean
 }): Promise<{ listId: string | null; items: ListItem[] }> {
-  const userId = await resolveUserId()
-  const listId = await getActiveListId(userId)
+  await ensureAuth()
+  const listId = await getActiveListId()
   if (!listId) return { listId: null, items: [] }
 
   let query = supabase
@@ -241,14 +229,9 @@ export interface NewItem {
  * Applique la déduplication du PRD : même nom + même unité (non coché) => quantité cumulée.
  */
 export async function addShoppingItem(item: NewItem): Promise<ListItem> {
-  const userId = await resolveUserId()
-  if (!userId) {
-    throw new Error(
-      "Impossible d'ajouter un article sans utilisateur ciblé. Configure MYFRIDGE_USER_EMAIL ou MYFRIDGE_USER_ID.",
-    )
-  }
+  const userId = await ensureAuth()
 
-  let listId = await getActiveListId(userId)
+  let listId = await getActiveListId()
   if (!listId) {
     const { data, error } = await supabase
       .from('shopping_lists')
