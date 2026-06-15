@@ -1,0 +1,355 @@
+/* =========================================================================
+   myFridge — Design System tokens
+   Material 3 "vert frais", thème clair v1. Source: Design System.dc.html
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ---- Couleur · rôles (Material 3) ---- */
+  --primary: #1F7A4D;
+  --on-primary: #FFFFFF;
+  --primary-container: #A8F2C2;
+  --on-primary-container: #00210F;
+
+  --secondary: #4F6354;
+  --on-secondary: #FFFFFF;
+  --secondary-container: #D1E8D6;
+  --on-secondary-container: #0C1F13;
+
+  --tertiary: #B26A00;            /* Recettes */
+  --on-tertiary: #FFFFFF;
+  --tertiary-container: #FFDDB3;
+  --on-tertiary-container: #2A1700;
+
+  --error: #BA1A1A;
+  --on-error: #FFFFFF;
+  --error-container: #FFDAD6;
+  --on-error-container: #410002;
+
+  /* ---- Surfaces & neutres ---- */
+  --surface-lowest: #FFFFFF;
+  --surface: #FBFDF8;
+  --surface-low: #F3F5F0;
+  --surface-container: #EDF0EA;
+  --surface-highest: #E2E5DF;
+  --on-surface: #191C1A;
+  --on-surface-variant: #404943;
+  --outline: #BFC9C1;
+  --outline-variant: #E2E5DF;
+  --muted: #707973;
+  --scrim: rgba(0, 0, 0, 0.32);
+
+  /* ---- Forme (rayon de courbure) ---- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+
+  /* ---- Élévation ---- */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.30), 0 2px 6px 2px rgba(0, 0, 0, 0.12);
+  --elev-3: 0 4px 8px 3px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.30);
+
+  /* ---- Typographie ---- */
+  --font-display: 'Caveat', cursive;
+  --font-ui: 'Nunito', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ---- Espace (grille 8px) ---- */
+  --touch: 44px; /* cible tactile minimale (accessibilité PRD) */
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--on-surface);
+  /* Fond de scène (visible autour du téléphone sur grand écran) */
+  background: linear-gradient(160deg, #DCEFE3, #EDF0EA);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection { background: var(--primary-container); color: var(--on-primary-container); }
+
+button { font-family: inherit; }
+
+a { color: inherit; text-decoration: none; }
+
+input, textarea, select { font-family: inherit; }
+
+/* Masque les flèches des inputs number */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; }
+
+/* =========================================================================
+   App shell — mobile-first. Sur grand écran : cadre téléphone centré.
+   ========================================================================= */
+.app-shell {
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (min-width: 600px) {
+  .app-shell {
+    max-width: 420px;
+    min-height: 860px;
+    height: 90dvh;
+    margin: max(24px, 5dvh) auto;
+    border-radius: 40px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
+    border: 10px solid #0E120F;
+  }
+}
+
+/* Zone défilable des écrans (au-dessus de la bottom nav) */
+.screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.screen--padded { padding: 0 16px 24px; }
+
+/* =========================================================================
+   Typographie utilitaire
+   ========================================================================= */
+.t-display { font-family: var(--font-display); font-weight: 700; font-size: 44px; line-height: 1.2; }
+.t-headline { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
+.t-title-l { font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+.t-title-m { font-size: 16px; font-weight: 600; }
+.t-body-l { font-size: 16px; font-weight: 400; }
+.t-body-m { font-size: 14px; font-weight: 400; color: var(--on-surface-variant); }
+.t-label { font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+.t-mono { font-family: var(--font-mono); }
+.t-muted { color: var(--muted); }
+.t-section {
+  font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--on-surface-variant);
+}
+
+/* =========================================================================
+   Boutons (cible 44px, coins pilule M3)
+   ========================================================================= */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--touch); padding: 12px 24px;
+  border: none; border-radius: var(--radius-full);
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:active { filter: brightness(0.95); }
+.btn--block { width: 100%; }
+
+.btn--filled { background: var(--primary); color: var(--on-primary); box-shadow: var(--elev-1); }
+.btn--tonal { background: var(--primary-container); color: var(--on-primary-container); }
+.btn--outlined { background: transparent; color: var(--primary); border: 1.5px solid var(--outline); }
+.btn--text { background: transparent; color: var(--primary); padding: 12px 16px; }
+.btn--danger { background: var(--error); color: var(--on-error); }
+.btn--danger-text { background: transparent; color: var(--error); }
+
+/* Icon button */
+.icon-btn {
+  width: 40px; height: 40px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-full);
+  background: var(--surface-container); color: var(--on-surface-variant);
+  font-size: 18px; cursor: pointer;
+}
+
+/* =========================================================================
+   Cards
+   ========================================================================= */
+.card {
+  background: var(--surface-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1);
+}
+
+/* =========================================================================
+   Chips
+   ========================================================================= */
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border-radius: var(--radius-full);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  background: var(--surface-lowest); color: var(--on-surface-variant);
+  border: 1.5px solid var(--outline); white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.chip--selected { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+
+/* =========================================================================
+   Champs de saisie (outlined M3)
+   ========================================================================= */
+.field { position: relative; margin-bottom: 18px; }
+.field__input {
+  width: 100%; min-height: var(--touch);
+  padding: 16px; border: 1.5px solid var(--outline);
+  border-radius: var(--radius-sm); background: var(--surface-lowest);
+  font-size: 15px; color: var(--on-surface); outline: none;
+  transition: border-color 0.15s ease;
+}
+.field__input:focus { border-color: var(--primary); border-width: 1.5px; }
+.field__input::placeholder { color: var(--muted); }
+.field__label {
+  position: absolute; top: -9px; left: 12px; padding: 0 6px;
+  background: var(--surface-lowest); font-size: 12px; font-weight: 600;
+  color: var(--muted);
+}
+.field__input:focus ~ .field__label,
+.field--filled .field__label { color: var(--primary); }
+
+/* Barre de recherche */
+.search {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface-container); border-radius: var(--radius-full);
+  padding: 12px 20px; min-height: var(--touch);
+}
+.search input { flex: 1; border: none; background: transparent; outline: none; font-size: 15px; color: var(--on-surface); }
+
+/* =========================================================================
+   Badges de péremption / fraîcheur
+   ========================================================================= */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: var(--radius-full);
+}
+.badge__dot { width: 7px; height: 7px; border-radius: var(--radius-full); }
+
+/* =========================================================================
+   FAB / Extended FAB
+   ========================================================================= */
+.fab-extended {
+  position: absolute; right: 18px; bottom: 88px; z-index: 20;
+  display: inline-flex; align-items: center; gap: 9px;
+  height: 56px; padding: 0 22px; border: none; cursor: pointer;
+  border-radius: 18px; background: var(--primary); color: var(--on-primary);
+  font-size: 15px; font-weight: 700; box-shadow: var(--elev-3);
+}
+
+/* =========================================================================
+   Bottom navigation (4 onglets)
+   ========================================================================= */
+.bottom-nav {
+  flex: none;
+  display: flex; justify-content: space-around; align-items: center;
+  background: var(--surface-low); padding: 10px 6px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--surface-highest);
+}
+.bottom-nav__tab {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  flex: 1; background: none; border: none; cursor: pointer;
+  font-size: 11px; font-weight: 600; color: var(--on-surface-variant);
+}
+.bottom-nav__icon {
+  font-size: 18px; padding: 3px 16px; border-radius: var(--radius-full);
+  transition: background 0.15s ease;
+}
+.bottom-nav__tab--active { color: var(--primary); font-weight: 700; }
+.bottom-nav__tab--active .bottom-nav__icon { background: var(--primary-container); }
+
+/* =========================================================================
+   Top app bar
+   ========================================================================= */
+.topbar {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 12px;
+}
+
+/* =========================================================================
+   Checkbox (cochage d'article)
+   ========================================================================= */
+.checkbox {
+  width: 24px; height: 24px; flex: none; border-radius: var(--radius-xs);
+  border: 2px solid var(--outline); background: var(--surface-lowest);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 14px; cursor: pointer; transition: background 0.15s ease;
+}
+.checkbox--checked { background: var(--primary); border-color: var(--primary); }
+
+/* Pastille produit (emoji du rayon) */
+.thumb {
+  width: 40px; height: 40px; flex: none; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 20px;
+}
+
+/* =========================================================================
+   Snackbar / Toast
+   ========================================================================= */
+.snackbar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: calc(100% - 32px); max-width: 388px;
+  background: #2E322F; color: var(--surface-low);
+  border-radius: var(--radius-md); padding: 14px 18px;
+  box-shadow: var(--elev-2); font-size: 14px; font-weight: 500;
+  animation: snackbar-in 0.2s ease;
+}
+.snackbar__action { color: var(--primary-container); font-weight: 700; cursor: pointer; background: none; border: none; }
+@keyframes snackbar-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* =========================================================================
+   Spinner / loader
+   ========================================================================= */
+.spinner {
+  width: 24px; height: 24px; flex: none; border-radius: var(--radius-full);
+  border: 3px solid var(--primary-container); border-top-color: var(--primary);
+  display: inline-block; animation: spin 0.8s linear infinite;
+}
+.spinner--lg { width: 40px; height: 40px; border-width: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* =========================================================================
+   Switch
+   ========================================================================= */
+.switch {
+  width: 52px; height: 32px; flex: none; border-radius: var(--radius-full);
+  background: var(--surface-highest); border: 2px solid var(--outline);
+  position: relative; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.switch__knob {
+  position: absolute; top: 5px; left: 5px; width: 18px; height: 18px;
+  border-radius: var(--radius-full); background: var(--muted);
+  transition: transform 0.15s ease, background 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+.switch--on { background: var(--primary); border-color: var(--primary); }
+.switch--on .switch__knob { transform: translateX(20px); top: 4px; width: 24px; height: 24px; left: 0; background: #fff; }
+
+/* =========================================================================
+   Barre de progression
+   ========================================================================= */
+.progress { height: 6px; border-radius: var(--radius-full); background: var(--surface-container); overflow: hidden; }
+.progress__bar { height: 100%; background: var(--primary); border-radius: var(--radius-full); transition: width 0.3s ease; }
+
+/* Divider */
+.divider { height: 1px; background: var(--surface-container); }
+
+/* Layout helpers */
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-14 { gap: 14px; }
+.grow { flex: 1; min-width: 0; }
+.center { display: flex; align-items: center; justify-content: center; }
+.text-strike { text-decoration: line-through; }
+.fade { opacity: 0.55; }
