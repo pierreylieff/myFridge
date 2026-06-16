@@ -1,9 +1,9 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 
 const TABS = [
-  { to: '/', icon: '🛒', label: 'Liste' },
+  { to: '/stock', icon: '📦', label: 'Stock' },
+  { to: '/', icon: '🛒', label: 'Courses' },
   { to: '/recettes', icon: '📖', label: 'Recettes' },
-  { to: '/planning', icon: '📅', label: 'Planning' },
   { to: '/profil', icon: '👤', label: 'Profil' },
 ]
 

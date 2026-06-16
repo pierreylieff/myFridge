@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { addItem, getOrCreateActiveList } from '../lib/api'
+import { addOrMergePantryItem, getOrCreatePantry } from '../lib/api'
 import { RAYONS, RAYON_ORDER, UNITS, CONFIDENCE_THRESHOLD } from '../lib/constants'
 import { ConfidenceBar, EmptyState } from '../components/common'
 import type { DetectedProduct, Rayon, ScanType } from '../lib/types'
@@ -41,19 +41,18 @@ export default function ScanResults() {
     if (!user || selectedCount === 0) return
     setBusy(true)
     try {
-      const listId = await getOrCreateActiveList(user.id)
+      const pantryId = await getOrCreatePantry(user.id)
       for (const r of rows.filter((r) => r.checked)) {
-        await addItem(listId, user.id, {
+        await addOrMergePantryItem(pantryId, user.id, {
           name: r.name,
           rayon: r.rayon,
           quantity: r.quantity,
           unit: r.unit,
-          origin: 'ia',
-          confidence: r.confidence,
+          source: 'ia',
         })
       }
-      show(`${selectedCount} produit${selectedCount > 1 ? 's' : ''} ajouté${selectedCount > 1 ? 's' : ''} à la liste`)
-      navigate('/', { replace: true })
+      show(`${selectedCount} produit${selectedCount > 1 ? 's' : ''} ajouté${selectedCount > 1 ? 's' : ''} à votre stock`)
+      navigate('/stock', { replace: true })
     } catch {
       show('Erreur — réessayez')
       setBusy(false)

@@ -6,6 +6,7 @@ import Login from './screens/Login'
 import Signup from './screens/Signup'
 import Onboarding from './screens/Onboarding'
 import Home from './screens/Home'
+import Inventory from './screens/Inventory'
 import AddEditItem from './screens/AddEditItem'
 import Scanner from './screens/Scanner'
 import ScanResults from './screens/ScanResults'
@@ -44,6 +45,8 @@ export default function App() {
       <Route path="/oauth/consent" element={<OAuthConsent />} />
 
       <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+      <Route path="/stock" element={<RequireAuth><Inventory /></RequireAuth>} />
+      <Route path="/stock/item/:id" element={<RequireAuth><AddEditItem mode="stock" /></RequireAuth>} />
       <Route path="/item/:id" element={<RequireAuth><AddEditItem /></RequireAuth>} />
       <Route path="/scanner" element={<RequireAuth><Scanner /></RequireAuth>} />
       <Route path="/scan/results" element={<RequireAuth><ScanResults /></RequireAuth>} />

@@ -13,6 +13,17 @@ export const RAYONS: Record<Rayon, { label: string; emoji: string; text: string;
 // Fixed display order used for grouping the shopping list.
 export const RAYON_ORDER: Rayon[] = ['frais', 'epicerie', 'surgeles', 'boissons', 'hygiene', 'autre']
 
+// Emplacement physique associé à un rayon, pour la vue Stock (« ce que je devrais
+// avoir dans mes armoires/frigo/congélateur »). null = pas d'emplacement dédié.
+export const RAYON_LOCATION: Record<Rayon, string | null> = {
+  frais: 'Frigo',
+  epicerie: 'Placard',
+  surgeles: 'Congélateur',
+  boissons: null,
+  hygiene: null,
+  autre: null,
+}
+
 // Normalised units (PRD règle métier "Gestion des quantités").
 export const UNITS = ['piece', 'g', 'kg', 'mL', 'L'] as const
 export type Unit = (typeof UNITS)[number]

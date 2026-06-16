@@ -15,9 +15,22 @@ export interface PantryItem {
   rayon: Rayon
   quantity: number
   unit: string
+  // Quantité souhaitée (« ce que je devrais avoir »). null = pas de cible.
+  target_qty: number | null
+  // Marquage manuel « à racheter » (utilisé quand aucune cible n'est définie).
+  needs_restock: boolean
   expiry_date: string | null
   source: string
   created_at: string
+}
+
+/**
+ * Déficit à racheter pour un produit : cible − réel si une cible existe,
+ * sinon 1 unité dès que le produit est marqué « à racheter ». 0 = rien à acheter.
+ */
+export function restockDeficit(item: PantryItem): number {
+  if (item.target_qty != null) return Math.max(0, Number(item.target_qty) - Number(item.quantity))
+  return item.needs_restock ? 1 : 0
 }
 
 export interface ListItem {
@@ -178,6 +191,121 @@ export async function getFridge(opts: {
     )
   }
   return items
+}
+
+/** Récupère le garde-manger de l'utilisateur, en crée un par défaut si besoin. */
+async function getOrCreatePantryId(userId: string): Promise<string> {
+  const { data } = await supabase
+    .from('pantries')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (data) return data.id
+  const { data: created, error } = await supabase
+    .from('pantries')
+    .insert({ user_id: userId, name: 'Mon garde-manger' })
+    .select('id')
+    .single()
+  if (error) throw error
+  return created.id
+}
+
+export interface NewPantryItem {
+  name: string
+  rayon: Rayon
+  quantity: number
+  unit: string
+  target_qty?: number | null
+  source?: string
+}
+
+/**
+ * Ajoute (ou fusionne) un produit dans le garde-manger.
+ * Déduplication : même nom + même unité => les quantités sont sommées.
+ */
+export async function addToStock(item: NewPantryItem): Promise<PantryItem> {
+  const userId = await ensureAuth()
+  const pantryId = await getOrCreatePantryId(userId)
+
+  const { data: dupes } = await supabase
+    .from('pantry_items')
+    .select('*')
+    .eq('pantry_id', pantryId)
+    .ilike('name', item.name.trim())
+  const dupe = (dupes as PantryItem[] | null)?.find((d) => d.unit === item.unit)
+
+  if (dupe) {
+    const patch: Record<string, unknown> = { quantity: Number(dupe.quantity) + item.quantity }
+    if (item.target_qty != null) patch.target_qty = item.target_qty
+    const { data, error } = await supabase
+      .from('pantry_items')
+      .update(patch)
+      .eq('id', dupe.id)
+      .select('*')
+      .single()
+    if (error) throw error
+    return data as PantryItem
+  }
+
+  const { data, error } = await supabase
+    .from('pantry_items')
+    .insert({
+      pantry_id: pantryId,
+      user_id: userId,
+      name: item.name.trim(),
+      rayon: item.rayon,
+      quantity: item.quantity,
+      unit: item.unit,
+      target_qty: item.target_qty ?? null,
+      source: item.source ?? 'manuel',
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as PantryItem
+}
+
+/** Définit (ou efface avec null) la quantité cible d'un produit du stock. */
+export async function setPantryTarget(id: string, target: number | null): Promise<PantryItem> {
+  await ensureAuth()
+  const { data, error } = await supabase
+    .from('pantry_items')
+    .update({ target_qty: target })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as PantryItem
+}
+
+/** Marque (ou démarque) un produit du stock comme « à racheter ». */
+export async function setRestock(id: string, needsRestock: boolean): Promise<PantryItem> {
+  await ensureAuth()
+  const { data, error } = await supabase
+    .from('pantry_items')
+    .update({ needs_restock: needsRestock })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as PantryItem
+}
+
+/**
+ * Pont stock → courses : pousse tout produit en déficit (cible − réel) ou marqué
+ * « à racheter » dans la liste active. Retourne le nombre d'articles ajoutés.
+ */
+export async function syncListFromInventory(): Promise<number> {
+  const items = await getFridge({})
+  let count = 0
+  for (const it of items) {
+    const deficit = restockDeficit(it)
+    if (deficit <= 0) continue
+    await addShoppingItem({ name: it.name, rayon: it.rayon, quantity: deficit, unit: it.unit, origin: 'manuel' })
+    count++
+  }
+  return count
 }
 
 // ---------------------------------------------------------------------------

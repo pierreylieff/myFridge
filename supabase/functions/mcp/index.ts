@@ -37,6 +37,12 @@ function groupByRayon<T extends { rayon: Rayon }>(items: T[]): Record<string, T[
   return out
 }
 
+// Déficit à racheter : cible − réel si une cible existe, sinon 1 si « à racheter ».
+function restockDeficit(item: { target_qty?: number | null; quantity: number; needs_restock?: boolean }): number {
+  if (item.target_qty != null) return Math.max(0, Number(item.target_qty) - Number(item.quantity))
+  return item.needs_restock ? 1 : 0
+}
+
 function jsonResult(text: string, data: unknown) {
   return {
     content: [
@@ -181,12 +187,18 @@ function buildServer(db: SupabaseClient, userId: string): McpServer {
           text = 'Le garde-manger est vide (ou aucun produit ne correspond au filtre).'
         } else {
           const groups = groupByRayon(items as any)
-          const out = [`🧊 Garde-manger — ${items.length} produit(s)\n`]
+          const toBuy = (items as any[]).filter((i) => restockDeficit(i) > 0).length
+          const head = toBuy > 0 ? ` — ${toBuy} à racheter` : ''
+          const out = [`🧊 Garde-manger — ${items.length} produit(s)${head}\n`]
           for (const r of Object.keys(groups).sort()) {
             out.push(`▸ ${r}`)
             for (const it of groups[r] as any[]) {
               const exp = it.expiry_date ? ` — péremption ${it.expiry_date}` : ''
-              out.push(`   • ${it.name} (${qty(it.quantity, it.unit)})${exp}`)
+              const deficit = restockDeficit(it)
+              let stock = `j'ai ${qty(it.quantity, it.unit)}`
+              if (it.target_qty != null) stock += `, cible ${it.target_qty}`
+              const flag = deficit > 0 ? ` ⚠️ manque ${qty(deficit, it.unit)}` : ''
+              out.push(`   • ${it.name} (${stock})${flag}${exp} [id: ${it.id}]`)
             }
           }
           text = out.join('\n')
@@ -297,7 +309,171 @@ function buildServer(db: SupabaseClient, userId: string): McpServer {
     },
   )
 
+  // ----- GESTION DU STOCK (cible / réassort) -----
+  server.registerTool(
+    'add_to_stock',
+    {
+      title: 'Ajouter un produit au stock',
+      description:
+        'Ajoute (ou fusionne) un produit dans le garde-manger (« ce que j’ai »). Dédup par nom + unité. Cible optionnelle.',
+      inputSchema: {
+        name: z.string(),
+        rayon: z.enum(RAYONS).default('autre'),
+        quantity: z.number().nonnegative().default(1),
+        unit: z.string().default('piece'),
+        target_qty: z.number().positive().optional(),
+      },
+    },
+    async ({ name, rayon, quantity, unit, target_qty }) => {
+      try {
+        const item = await addToStock(db, userId, { name, rayon, quantity, unit, target_qty })
+        return jsonResult(`✅ Stock : ${item.name} (j'ai ${qty(item.quantity, item.unit)})`, item)
+      } catch (err) {
+        return errResult(err)
+      }
+    },
+  )
+
+  server.registerTool(
+    'set_pantry_target',
+    {
+      title: 'Définir la quantité cible d’un produit',
+      description:
+        'Définit la quantité souhaitée (« ce que je devrais avoir ») d’un produit du stock, par id. null = efface la cible.',
+      inputSchema: { id: z.string(), target_qty: z.number().nonnegative().nullable() },
+    },
+    async ({ id, target_qty }) => {
+      try {
+        const { data, error } = await db
+          .from('pantry_items')
+          .update({ target_qty })
+          .eq('id', id)
+          .select('*')
+          .single()
+        if (error) throw error
+        const deficit = restockDeficit(data as any)
+        const note = deficit > 0 ? ` — manque ${qty(deficit, (data as any).unit)}` : ''
+        return jsonResult(`🎯 Cible de ${(data as any).name} : ${target_qty == null ? 'aucune' : target_qty}${note}`, data)
+      } catch (err) {
+        return errResult(err)
+      }
+    },
+  )
+
+  server.registerTool(
+    'mark_restock',
+    {
+      title: 'Marquer un produit « à racheter »',
+      description:
+        'Marque (ou démarque) un produit du stock comme « à racheter ». Utile quand aucune cible n’est définie.',
+      inputSchema: { id: z.string(), needs_restock: z.boolean().default(true) },
+    },
+    async ({ id, needs_restock }) => {
+      try {
+        const { data, error } = await db
+          .from('pantry_items')
+          .update({ needs_restock })
+          .eq('id', id)
+          .select('*')
+          .single()
+        if (error) throw error
+        return jsonResult(
+          `${needs_restock ? '🛒' : '✓'} ${(data as any).name} ${needs_restock ? 'marqué à racheter' : 'retiré des produits à racheter'}.`,
+          data,
+        )
+      } catch (err) {
+        return errResult(err)
+      }
+    },
+  )
+
+  server.registerTool(
+    'sync_shopping_list',
+    {
+      title: 'Compléter la liste depuis le stock',
+      description:
+        'Pousse vers la liste de courses tout produit en déficit (cible − réel) ou marqué « à racheter ». Retourne le nombre d’articles ajoutés.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const { data, error } = await db.from('pantry_items').select('*')
+        if (error) throw error
+        let count = 0
+        for (const it of (data ?? []) as any[]) {
+          const deficit = restockDeficit(it)
+          if (deficit <= 0) continue
+          await addItem(db, userId, { name: it.name, rayon: it.rayon, quantity: deficit, unit: it.unit, origin: 'manuel' })
+          count++
+        }
+        const text =
+          count === 0
+            ? 'Rien à racheter — le stock est complet 👍'
+            : `✅ ${count} article(s) ajouté(s) à la liste de courses depuis le stock.`
+        return jsonResult(text, { added: count })
+      } catch (err) {
+        return errResult(err)
+      }
+    },
+  )
+
   return server
+}
+
+// Récupère le garde-manger de l'utilisateur, en crée un par défaut si besoin.
+async function getOrCreatePantryId(db: SupabaseClient, userId: string): Promise<string> {
+  const { data } = await db
+    .from('pantries')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (data) return data.id
+  const { data: created, error } = await db
+    .from('pantries')
+    .insert({ user_id: userId, name: 'Mon garde-manger' })
+    .select('id')
+    .single()
+  if (error) throw error
+  return created.id
+}
+
+// Ajout/fusion d'un produit au stock (dédup nom + unité => quantités cumulées).
+async function addToStock(
+  db: SupabaseClient,
+  userId: string,
+  item: { name: string; rayon: Rayon; quantity: number; unit: string; target_qty?: number | null },
+): Promise<any> {
+  const pantryId = await getOrCreatePantryId(db, userId)
+  const { data: dupes } = await db
+    .from('pantry_items')
+    .select('*')
+    .eq('pantry_id', pantryId)
+    .ilike('name', item.name.trim())
+  const dupe = (dupes as any[] | null)?.find((d) => d.unit === item.unit)
+  if (dupe) {
+    const patch: Record<string, unknown> = { quantity: Number(dupe.quantity) + item.quantity }
+    if (item.target_qty != null) patch.target_qty = item.target_qty
+    const { data, error } = await db.from('pantry_items').update(patch).eq('id', dupe.id).select('*').single()
+    if (error) throw error
+    return data
+  }
+  const { data, error } = await db
+    .from('pantry_items')
+    .insert({
+      pantry_id: pantryId,
+      user_id: userId,
+      name: item.name.trim(),
+      rayon: item.rayon,
+      quantity: item.quantity,
+      unit: item.unit,
+      target_qty: item.target_qty ?? null,
+      source: 'manuel',
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
 }
 
 // Insertion avec déduplication (règle métier PRD).

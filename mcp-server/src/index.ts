@@ -10,6 +10,11 @@ import {
   getShoppingList,
   addShoppingItem,
   addRecipeToShoppingList,
+  addToStock,
+  setPantryTarget,
+  setRestock,
+  syncListFromInventory,
+  restockDeficit,
   type Rayon,
   type PantryItem,
   type ListItem,
@@ -33,12 +38,19 @@ function groupByRayon<T extends { rayon: Rayon }>(items: T[]): Record<string, T[
 function fridgeToText(items: PantryItem[]): string {
   if (items.length === 0) return 'Le garde-manger est vide (ou aucun produit ne correspond au filtre).'
   const groups = groupByRayon(items)
-  const lines: string[] = [`🧊 Garde-manger — ${items.length} produit(s)\n`]
+  const toBuy = items.filter((i) => restockDeficit(i) > 0).length
+  const header = toBuy > 0 ? ` — ${toBuy} à racheter` : ''
+  const lines: string[] = [`🧊 Garde-manger — ${items.length} produit(s)${header}\n`]
   for (const rayon of Object.keys(groups).sort()) {
     lines.push(`▸ ${rayon}`)
     for (const it of groups[rayon]) {
       const exp = it.expiry_date ? ` — péremption ${it.expiry_date}` : ''
-      lines.push(`   • ${it.name} (${qty(it.quantity, it.unit)})${exp}`)
+      // « ce que j'ai » + éventuelle cible et manque associé.
+      const deficit = restockDeficit(it)
+      let stock = `j'ai ${qty(it.quantity, it.unit)}`
+      if (it.target_qty != null) stock += `, cible ${it.target_qty}`
+      const flag = deficit > 0 ? ` ⚠️ manque ${qty(deficit, it.unit)}` : ''
+      lines.push(`   • ${it.name} (${stock})${flag}${exp} [id: ${it.id}]`)
     }
   }
   return lines.join('\n')
@@ -241,6 +253,112 @@ server.registerTool(
     try {
       const count = await addRecipeToShoppingList(recipe_id)
       return result(`✅ ${count} ingrédient(s) ajouté(s) à la liste de courses.`, { added: count })
+    } catch (err) {
+      return errorResult(err)
+    }
+  },
+)
+
+// ----- GESTION DU STOCK (cible / réassort) --------------------------------
+
+server.registerTool(
+  'add_to_stock',
+  {
+    title: 'Ajouter un produit au stock',
+    description:
+      'Ajoute (ou fusionne) un produit dans le garde-manger : « ce que j’ai ». Déduplication par nom + unité (quantités cumulées). La cible est optionnelle.',
+    inputSchema: {
+      name: z.string().describe('Nom du produit'),
+      rayon: z.enum(RAYONS).default('autre').describe('Rayon du produit'),
+      quantity: z.number().nonnegative().default(1).describe('Quantité en stock (« ce que j’ai »)'),
+      unit: z.string().default('piece').describe('Unité (piece, g, kg, mL, L...)'),
+      target_qty: z
+        .number()
+        .positive()
+        .optional()
+        .describe('Quantité souhaitée (« ce que je devrais avoir »). Optionnel.'),
+    },
+  },
+  async ({ name, rayon, quantity, unit, target_qty }) => {
+    try {
+      const item = await addToStock({ name, rayon, quantity, unit, target_qty })
+      return result(`✅ Stock : ${item.name} (j'ai ${qty(item.quantity, item.unit)})`, item)
+    } catch (err) {
+      return errorResult(err)
+    }
+  },
+)
+
+server.registerTool(
+  'set_pantry_target',
+  {
+    title: 'Définir la quantité cible d’un produit',
+    description:
+      'Définit la quantité souhaitée (« ce que je devrais avoir ») d’un produit du stock, par id. Passez null pour effacer la cible.',
+    inputSchema: {
+      id: z.string().describe('Identifiant (uuid) du produit du stock'),
+      target_qty: z
+        .number()
+        .nonnegative()
+        .nullable()
+        .describe('Quantité cible, ou null pour effacer'),
+    },
+  },
+  async ({ id, target_qty }) => {
+    try {
+      const item = await setPantryTarget(id, target_qty)
+      const deficit = restockDeficit(item)
+      const note = deficit > 0 ? ` — manque ${qty(deficit, item.unit)}` : ''
+      return result(
+        `🎯 Cible de ${item.name} : ${target_qty == null ? 'aucune' : target_qty}${note}`,
+        item,
+      )
+    } catch (err) {
+      return errorResult(err)
+    }
+  },
+)
+
+server.registerTool(
+  'mark_restock',
+  {
+    title: 'Marquer un produit « à racheter »',
+    description:
+      'Marque (ou démarque) un produit du stock comme « à racheter ». Utile quand aucune cible n’est définie.',
+    inputSchema: {
+      id: z.string().describe('Identifiant (uuid) du produit du stock'),
+      needs_restock: z.boolean().default(true).describe('true = à racheter, false = retire le marquage'),
+    },
+  },
+  async ({ id, needs_restock }) => {
+    try {
+      const item = await setRestock(id, needs_restock)
+      return result(
+        `${needs_restock ? '🛒' : '✓'} ${item.name} ${needs_restock ? 'marqué à racheter' : 'retiré des produits à racheter'}.`,
+        item,
+      )
+    } catch (err) {
+      return errorResult(err)
+    }
+  },
+)
+
+server.registerTool(
+  'sync_shopping_list',
+  {
+    title: 'Compléter la liste depuis le stock',
+    description:
+      'Pousse vers la liste de courses tout produit en déficit (cible − réel) ou marqué « à racheter ». Retourne le nombre d’articles ajoutés.',
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const count = await syncListFromInventory()
+      const text =
+        count === 0
+          ? 'Rien à racheter — le stock est complet 👍'
+          : `✅ ${count} article(s) ajouté(s) à la liste de courses depuis le stock.`
+      return result(text, { added: count })
     } catch (err) {
       return errorResult(err)
     }

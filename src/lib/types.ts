@@ -23,6 +23,25 @@ export interface Pantry {
   created_at: string
 }
 
+export type PantrySource = 'ia' | 'manuel' | 'ticket'
+
+export interface PantryItem {
+  id: string
+  pantry_id: string
+  user_id: string
+  name: string
+  rayon: Rayon
+  quantity: number
+  unit: string
+  // Quantité souhaitée (« ce que je devrais avoir »). null = pas de cible.
+  target_qty: number | null
+  // Marquage manuel « à racheter » (utilisé quand aucune cible n'est définie).
+  needs_restock: boolean
+  expiry_date: string | null
+  source: PantrySource | string
+  created_at: string
+}
+
 export interface ShoppingList {
   id: string
   user_id: string
@@ -89,6 +108,11 @@ export interface Database {
     Tables: {
       profiles: { Row: Profile; Insert: Partial<Profile> & { id: string }; Update: Partial<Profile> }
       pantries: { Row: Pantry; Insert: Partial<Pantry> & { user_id: string }; Update: Partial<Pantry> }
+      pantry_items: {
+        Row: PantryItem
+        Insert: Partial<PantryItem> & { pantry_id: string; user_id: string; name: string }
+        Update: Partial<PantryItem>
+      }
       shopping_lists: { Row: ShoppingList; Insert: Partial<ShoppingList> & { user_id: string }; Update: Partial<ShoppingList> }
       list_items: {
         Row: ListItem

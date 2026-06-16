@@ -3,15 +3,28 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { supabase } from '../lib/supabase'
-import { addItem, deleteItem, getOrCreateActiveList, updateItem } from '../lib/api'
+import {
+  addItem,
+  deleteItem,
+  getOrCreateActiveList,
+  updateItem,
+  addOrMergePantryItem,
+  deletePantryItem,
+  getOrCreatePantry,
+  updatePantryItem,
+} from '../lib/api'
 import { RAYONS, RAYON_ORDER, UNITS } from '../lib/constants'
 import { guessRayon, searchProducts } from '../lib/products'
-import type { ListItem, Rayon } from '../lib/types'
+import type { ListItem, PantryItem, Rayon } from '../lib/types'
 
-export default function AddEditItem() {
+type Mode = 'list' | 'stock'
+
+export default function AddEditItem({ mode = 'list' }: { mode?: Mode }) {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = id !== 'new' && id != null
+  const isStock = mode === 'stock'
+  const backTo = isStock ? '/stock' : '/'
   const { user } = useAuth()
   const { show } = useToast()
 
@@ -19,29 +32,35 @@ export default function AddEditItem() {
   const [rayon, setRayon] = useState<Rayon>('autre')
   const [quantity, setQuantity] = useState('1')
   const [unit, setUnit] = useState('piece')
+  const [target, setTarget] = useState('') // cible optionnelle (mode stock)
   const [touchedRayon, setTouchedRayon] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
 
   useEffect(() => {
     if (!isEdit) return
+    const table = isStock ? 'pantry_items' : 'list_items'
     supabase
-      .from('list_items')
+      .from(table)
       .select('*')
       .eq('id', id!)
       .single()
       .then(({ data }) => {
         if (data) {
-          const it = data as ListItem
+          const it = data as ListItem | PantryItem
           setName(it.name)
           setRayon(it.rayon)
           setQuantity(String(it.quantity))
           setUnit(it.unit)
+          if (isStock) {
+            const t = (it as PantryItem).target_qty
+            setTarget(t == null ? '' : String(t))
+          }
           setTouchedRayon(true)
         }
         setLoading(false)
       })
-  }, [id, isEdit])
+  }, [id, isEdit, isStock])
 
   const suggestions = !isEdit ? searchProducts(name) : []
 
@@ -56,16 +75,28 @@ export default function AddEditItem() {
     if (!user || !name.trim()) return
     setBusy(true)
     const qty = Number(quantity.replace(',', '.')) || 1
+    const targetQty = target.trim() === '' ? null : Number(target.replace(',', '.'))
     try {
-      if (isEdit) {
-        await updateItem(id!, { name: name.trim(), rayon, quantity: qty, unit })
-        show('Article modifié')
+      if (isStock) {
+        if (isEdit) {
+          await updatePantryItem(id!, { name: name.trim(), rayon, quantity: qty, unit, target_qty: targetQty })
+          show('Produit modifié')
+        } else {
+          const pantryId = await getOrCreatePantry(user.id)
+          await addOrMergePantryItem(pantryId, user.id, { name, rayon, quantity: qty, unit, target_qty: targetQty })
+          show('Produit ajouté au stock')
+        }
       } else {
-        const listId = await getOrCreateActiveList(user.id)
-        await addItem(listId, user.id, { name, rayon, quantity: qty, unit, origin: 'manuel' })
-        show('Article ajouté')
+        if (isEdit) {
+          await updateItem(id!, { name: name.trim(), rayon, quantity: qty, unit })
+          show('Article modifié')
+        } else {
+          const listId = await getOrCreateActiveList(user.id)
+          await addItem(listId, user.id, { name, rayon, quantity: qty, unit, origin: 'manuel' })
+          show('Article ajouté')
+        }
       }
-      navigate('/', { replace: true })
+      navigate(backTo, { replace: true })
     } catch {
       show('Erreur — réessayez')
       setBusy(false)
@@ -76,9 +107,10 @@ export default function AddEditItem() {
     if (!isEdit) return
     setBusy(true)
     try {
-      await deleteItem(id!)
-      show('Article supprimé')
-      navigate('/', { replace: true })
+      if (isStock) await deletePantryItem(id!)
+      else await deleteItem(id!)
+      show(isStock ? 'Produit supprimé' : 'Article supprimé')
+      navigate(backTo, { replace: true })
     } catch {
       show('Suppression impossible')
       setBusy(false)
@@ -93,11 +125,16 @@ export default function AddEditItem() {
     )
   }
 
+  const title = isEdit
+    ? isStock ? 'Modifier le produit' : 'Modifier'
+    : isStock ? 'Nouveau produit' : 'Nouvel article'
+  const saveLabel = isEdit ? 'Enregistrer' : isStock ? 'Ajouter au stock' : 'Ajouter à la liste'
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <button className="icon-btn" aria-label="Retour" onClick={() => navigate(-1)}>←</button>
-        <span className="t-title-l">{isEdit ? 'Modifier' : 'Nouvel article'}</span>
+        <span className="t-title-l">{title}</span>
         <span style={{ width: 40 }} />
       </header>
 
@@ -151,7 +188,7 @@ export default function AddEditItem() {
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
-            <label className="field__label">Quantité</label>
+            <label className="field__label">{isStock ? "Quantité (j'ai)" : 'Quantité'}</label>
           </div>
           <div className="field field--filled" style={{ flex: 1, marginBottom: 18 }}>
             <select
@@ -167,6 +204,29 @@ export default function AddEditItem() {
             <label className="field__label">Unité</label>
           </div>
         </div>
+
+        {/* Cible optionnelle (mode stock uniquement) */}
+        {isStock && (
+          <>
+            <div className="field field--filled" style={{ marginBottom: 6 }}>
+              <input
+                className="field__input"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.5"
+                placeholder=""
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              />
+              <label className="field__label">Quantité souhaitée (cible) — optionnel</label>
+            </div>
+            <p className="t-body-m" style={{ fontSize: 12, color: 'var(--muted)', margin: '0 2px 18px' }}>
+              Définissez une cible pour un réassort automatique aux courses. Sinon, marquez « à racheter »
+              depuis votre stock quand c'est nécessaire.
+            </p>
+          </>
+        )}
 
         {/* Rayon */}
         <div className="t-label" style={{ color: 'var(--on-surface-variant)', margin: '4px 2px 12px' }}>Rayon</div>
@@ -187,11 +247,11 @@ export default function AddEditItem() {
 
         <div className="col gap-12" style={{ marginTop: 32 }}>
           <button className="btn btn--filled btn--block" onClick={save} disabled={busy || !name.trim()}>
-            {busy ? <span className="spinner" style={{ borderColor: '#ffffff66', borderTopColor: '#fff' }} /> : isEdit ? 'Enregistrer' : 'Ajouter à la liste'}
+            {busy ? <span className="spinner" style={{ borderColor: '#ffffff66', borderTopColor: '#fff' }} /> : saveLabel}
           </button>
           {isEdit && (
             <button className="btn btn--danger-text btn--block" onClick={remove} disabled={busy}>
-              Supprimer l'article
+              {isStock ? 'Supprimer le produit' : "Supprimer l'article"}
             </button>
           )}
         </div>

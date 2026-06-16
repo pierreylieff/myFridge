@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { getOrCreateActiveList, fetchItems, updateItem } from '../lib/api'
+import { getOrCreateActiveList, fetchItems, updateItem, receiveIntoStock } from '../lib/api'
 import { RAYONS, RAYON_ORDER } from '../lib/constants'
 import type { ListItem, Rayon } from '../lib/types'
 import ListItemRow from '../components/ListItemRow'
@@ -35,6 +35,22 @@ export default function Home() {
     setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, checked: next } : it)))
     try {
       await updateItem(item.id, { checked: next })
+      // Boucle de retour : un article coché « acheté » peut rejoindre le stock.
+      if (next && user) {
+        show('Article acheté', {
+          actionLabel: 'Ajouter au stock',
+          onAction: () => {
+            void receiveIntoStock(user.id, {
+              name: item.name,
+              rayon: item.rayon,
+              quantity: item.quantity,
+              unit: item.unit,
+            })
+              .then(() => show('Ajouté à votre stock'))
+              .catch(() => show('Erreur — réessayez'))
+          },
+        })
+      }
     } catch {
       show('Erreur réseau — modification annulée')
       void load()
@@ -74,7 +90,7 @@ export default function Home() {
           <div className="t-label" style={{ color: 'var(--primary)' }}>
             Bonjour {profile?.full_name?.split(' ')[0] ?? ''} 👋
           </div>
-          <div className="t-headline" style={{ fontSize: 24, fontWeight: 800 }}>Ma liste</div>
+          <div className="t-headline" style={{ fontSize: 24, fontWeight: 800 }}>Courses</div>
         </div>
         <div className="row gap-8">
           <button className="icon-btn" aria-label="Rechercher" onClick={() => setSearchOpen((s) => !s)}>🔍</button>
@@ -125,7 +141,8 @@ export default function Home() {
           </div>
         ) : items.length === 0 ? (
           <EmptyState emoji="🛒" title="Votre liste est vide">
-            Scannez votre frigo ou ajoutez un article pour démarrer.
+            Votre liste se remplit depuis votre stock (« Compléter les courses ») ou vos recettes. Vous pouvez
+            aussi ajouter un article directement.
           </EmptyState>
         ) : (
           <>
